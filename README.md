@@ -9,3 +9,5 @@ Probably, please open an issue.
 ## Usage
 
 Simply install both the Open Parties and Claims mod as well as the BlueMap mod (and this mod), and you should be all set!
+
+Credit to Gaming32 and DreamyLynn for the original mod and 1.20.1 fabric port respectively
