@@ -4,7 +4,7 @@ This mod will show land claims from the [Open Parties and Claims](https://modrin
 
 ## Will you support \<Version\>?
 
-Probably, please open an issue.
+*shrug* :P
 
 ## Usage
 
