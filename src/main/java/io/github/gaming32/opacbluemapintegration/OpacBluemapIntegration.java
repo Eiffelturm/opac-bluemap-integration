@@ -1,7 +1,6 @@
 package io.github.gaming32.opacbluemapintegration;
 
 import com.mojang.brigadier.Command;
-import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.logging.LogUtils;
 import de.bluecolored.bluemap.api.BlueMapAPI;
 import de.bluecolored.bluemap.api.BlueMapWorld;
@@ -11,9 +10,7 @@ import de.bluecolored.bluemap.api.markers.MarkerSet;
 import de.bluecolored.bluemap.api.markers.ShapeMarker;
 import de.bluecolored.bluemap.api.math.Color;
 import net.minecraft.ChatFormatting;
-import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.commands.arguments.TimeArgument;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
@@ -41,7 +38,6 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
-import static net.minecraft.commands.Commands.argument;
 import static net.minecraft.commands.Commands.literal;
 
 @Mod(OpacBluemapIntegration.MOD_ID)
@@ -54,7 +50,6 @@ public final class OpacBluemapIntegration {
     private static MinecraftServer minecraftServer;
     private static ScheduledExecutorService scheduler;
     private static ScheduledFuture<?> refreshFuture;
-    private static volatile long nextRefreshAtMillis;
 
     public OpacBluemapIntegration(IEventBus modBus, ModContainer container) {
         container.registerConfig(ModConfig.Type.SERVER, OpacBluemapConfig.serverSpec);
@@ -119,7 +114,6 @@ public final class OpacBluemapIntegration {
             refreshFuture.cancel(false);
             refreshFuture = null;
         }
-        nextRefreshAtMillis = 0;
     }
 
     private static void scheduleRefreshIn(int ticks) {
@@ -128,7 +122,6 @@ public final class OpacBluemapIntegration {
         ensureScheduler();
 
         final long delayMs = ticks * MILLIS_PER_TICK;
-        nextRefreshAtMillis = System.currentTimeMillis() + delayMs;
         refreshFuture = scheduler.schedule(OpacBluemapIntegration::queueRefreshOnServerThread, delayMs, TimeUnit.MILLISECONDS);
     }
 
@@ -146,12 +139,6 @@ public final class OpacBluemapIntegration {
             updateClaims(api);
         }
         scheduleRefreshIn(OpacBluemapConfig.SERVER.updateInterval.get());
-    }
-
-    private static int getTicksUntilRefresh() {
-        final long remainingMs = nextRefreshAtMillis - System.currentTimeMillis();
-        if (remainingMs <= 0) return 0;
-        return (int)Math.ceil(remainingMs / (double)MILLIS_PER_TICK);
     }
 
     private static ClaimNames getClaimNames(String claimName, String username) {
@@ -291,66 +278,17 @@ public final class OpacBluemapIntegration {
         public static void commandEvent(final RegisterCommandsEvent ev) {
             ev.getDispatcher().register(Commands.literal("openpac-bluemap")
                     .requires(s -> s.hasPermission(2))
-                    .then(literal("refresh-now")
-                            .requires(s -> BlueMapAPI.getInstance().isPresent())
-                            .executes(ctx -> {
-                                final BlueMapAPI api = BlueMapAPI.getInstance().orElse(null);
-                                if (api == null) {
-                                    ctx.getSource().sendFailure(Component.literal("BlueMap not loaded").withStyle(ChatFormatting.RED));
-                                    return 0;
-                                }
-                                updateClaims(api);
-                                scheduleRefreshIn(OpacBluemapConfig.SERVER.updateInterval.get());
-                                sendSuccess(ctx.getSource(), "BlueMap OpenPaC claims refreshed");
-                                return Command.SINGLE_SUCCESS;
-                            })
-                    )
-                    .then(literal("refresh-in")
-                            .executes(ctx -> sendTimedSuccess(ctx.getSource(), "OpenPaC BlueMap will refresh in ", getTicksUntilRefresh()))
-                            .then(argument("time", TimeArgument.time())
-                                    .executes(ctx -> {
-                                        final int ticks = IntegerArgumentType.getInteger(ctx, "time");
-                                        scheduleRefreshIn(ticks);
-                                        return sendTimedSuccess(ctx.getSource(), "OpenPaC BlueMap will refresh in ", ticks);
-                                    })
-                            )
-                    )
-                    .then(literal("refresh-every")
-                            .executes(ctx -> sendTimedSuccess(
-                                    ctx.getSource(),
-                                    "OpenPaC BlueMap auto refreshes every ",
-                                    OpacBluemapConfig.SERVER.updateInterval.get()
-                            ))
-                            .then(argument("interval", TimeArgument.time())
-                                    .executes(ctx -> {
-                                        final int interval = IntegerArgumentType.getInteger(ctx, "interval");
-                                        OpacBluemapConfig.SERVER.updateInterval.set(interval);
-                                        OpacBluemapConfig.SERVER.updateInterval.save();
-                                        scheduleRefreshIn(interval);
-                                        return sendTimedSuccess(ctx.getSource(), "OpenPaC BlueMap will auto refresh every ", interval);
-                                    })
-                            )
-                    )
                     .then(literal("reload")
                             .executes(ctx -> {
                                 scheduleRefreshIn(OpacBluemapConfig.SERVER.updateInterval.get());
-                                sendSuccess(ctx.getSource(), "Reloaded OpenPaC BlueMap config");
+                                ctx.getSource().sendSuccess(
+                                        () -> Component.literal("Reloaded OpenPaC BlueMap config").withStyle(ChatFormatting.GREEN),
+                                        true
+                                );
                                 return Command.SINGLE_SUCCESS;
                             })
                     )
             );
-        }
-
-        private static int sendTimedSuccess(CommandSourceStack source, String prefix, int ticks) {
-            source.sendSuccess(
-                    () -> Component.literal(prefix).append(Component.literal((ticks / TICKS_PER_SECOND) + "s").withStyle(ChatFormatting.GREEN)),
-                    true
-            );
-            return Command.SINGLE_SUCCESS;
-        }
-
-        private static void sendSuccess(CommandSourceStack source, String message) {
-            source.sendSuccess(() -> Component.literal(message).withStyle(ChatFormatting.GREEN), true);
         }
     }
 
