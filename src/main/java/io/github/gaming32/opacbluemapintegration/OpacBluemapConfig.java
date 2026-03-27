@@ -1,17 +1,17 @@
 package io.github.gaming32.opacbluemapintegration;
 
-import net.minecraftforge.common.ForgeConfigSpec;
+import net.neoforged.neoforge.common.ModConfigSpec;
 import org.apache.commons.lang3.tuple.Pair;
 
 public class OpacBluemapConfig {
     public static class ServerConfig {
 
-        public final ForgeConfigSpec.IntValue updateInterval;
-        public final ForgeConfigSpec.DoubleValue markerMinY;
-        public final ForgeConfigSpec.DoubleValue markerMaxY;
-        public final ForgeConfigSpec.BooleanValue depthTest;
+        public final ModConfigSpec.IntValue updateInterval;
+        public final ModConfigSpec.DoubleValue markerMinY;
+        public final ModConfigSpec.DoubleValue markerMaxY;
+        public final ModConfigSpec.BooleanValue depthTest;
 
-        ServerConfig(ForgeConfigSpec.Builder builder) {
+        ServerConfig(ModConfigSpec.Builder builder) {
             builder.comment("OPAC Bluemap Integration Cofig");
 
             this.updateInterval = builder
@@ -29,11 +29,11 @@ public class OpacBluemapConfig {
         }
     }
 
-    public static final ForgeConfigSpec serverSpec;
+    public static final ModConfigSpec serverSpec;
     public static final ServerConfig SERVER;
 
     static {
-        Pair<ServerConfig, ForgeConfigSpec> pair = new ForgeConfigSpec.Builder()
+        Pair<ServerConfig, ModConfigSpec> pair = new ModConfigSpec.Builder()
                 .configure(ServerConfig::new);
         serverSpec = pair.getRight();
         SERVER = pair.getLeft();

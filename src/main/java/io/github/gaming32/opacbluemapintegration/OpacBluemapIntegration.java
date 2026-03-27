@@ -19,16 +19,17 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
-import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.RegisterCommandsEvent;
-import net.minecraftforge.event.TickEvent;
-import net.minecraftforge.event.server.ServerStartedEvent;
-import net.minecraftforge.event.server.ServerStoppingEvent;
-import net.minecraftforge.eventbus.api.EventPriority;
-import net.minecraftforge.eventbus.api.SubscribeEvent;
-import net.minecraftforge.fml.ModLoadingContext;
-import net.minecraftforge.fml.common.Mod;
-import net.minecraftforge.fml.config.ModConfig;
+import net.neoforged.bus.api.EventPriority;
+import net.neoforged.bus.api.IEventBus;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.ModContainer;
+import net.neoforged.fml.common.Mod;
+import net.neoforged.fml.config.ModConfig;
+import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import xaero.pac.common.claims.player.api.IPlayerClaimPosListAPI;
@@ -52,10 +53,10 @@ public final class OpacBluemapIntegration {
 
     public static final String MOD_ID = "opac_bluemap_integration";
 
-    public OpacBluemapIntegration() {
-        ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, OpacBluemapConfig.serverSpec);
+    public OpacBluemapIntegration(IEventBus modBus, ModContainer container) {
+        container.registerConfig(ModConfig.Type.SERVER, OpacBluemapConfig.serverSpec);
         BlueMapAPI.onEnable(OpacBluemapIntegration::updateClaims);
-        MinecraftForge.EVENT_BUS.register(OpacBluemapModEvents.class);
+        NeoForge.EVENT_BUS.register(OpacBluemapModEvents.class);
     }
 
     public static class OpacBluemapModEvents {
@@ -70,7 +71,7 @@ public final class OpacBluemapIntegration {
         }
 
         @SubscribeEvent(priority = EventPriority.LOWEST)
-        public static void serverTick ( final TickEvent.ServerTickEvent ev){
+        public static void serverTick ( final ServerTickEvent.Post ev){
             if (updateIn <= 0) return;
             if (--updateIn <= 0) {
                 BlueMapAPI.getInstance().ifPresent(OpacBluemapIntegration::updateClaims);
