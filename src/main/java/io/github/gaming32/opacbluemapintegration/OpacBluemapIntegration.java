@@ -48,7 +48,7 @@ public final class OpacBluemapIntegration {
     private static final int TICKS_PER_SECOND = 20;
     private static final long MILLIS_PER_TICK = 1000L / TICKS_PER_SECOND;
     private static MinecraftServer minecraftServer;
-    private static ScheduledExecutorService scheduler;
+    private static ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private static ScheduledFuture<?> refreshFuture;
 
     public OpacBluemapIntegration(IEventBus modBus, ModContainer container) {
@@ -99,30 +99,31 @@ public final class OpacBluemapIntegration {
         LOGGER.info("Refreshed OpenPaC BlueMap markers");
     }
 
-    private static void ensureScheduler() {
-        if (scheduler == null || scheduler.isShutdown()) {
-            scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-                final Thread t = new Thread(r, MOD_ID + "-scheduler");
-                t.setDaemon(true);
-                return t;
-            });
-        }
-    }
-
-    private static void cancelScheduledRefresh() {
+    private static void stopRefreshTask() {
         if (refreshFuture != null) {
             refreshFuture.cancel(false);
             refreshFuture = null;
         }
+        if (scheduler != null) {
+            scheduler.shutdownNow();
+            scheduler = null;
+        }
     }
 
-    private static void scheduleRefreshIn(int ticks) {
-        cancelScheduledRefresh();
-        if (ticks <= 0 || minecraftServer == null) return;
-        ensureScheduler();
+    private static void startRefreshTask() {
+        stopRefreshTask();
+        if (minecraftServer == null) return;
 
-        final long delayMs = ticks * MILLIS_PER_TICK;
-        refreshFuture = scheduler.schedule(OpacBluemapIntegration::queueRefreshOnServerThread, delayMs, TimeUnit.MILLISECONDS);
+        final int intervalTicks = OpacBluemapConfig.SERVER.updateInterval.get();
+        if (intervalTicks <= 0) return;
+
+        final long intervalMs = intervalTicks * MILLIS_PER_TICK;
+        refreshFuture = scheduler.scheduleAtFixedRate(
+                OpacBluemapIntegration::queueRefreshOnServerThread,
+                0,
+                intervalMs,
+                TimeUnit.MILLISECONDS
+        );
     }
 
     private static void queueRefreshOnServerThread() {
@@ -138,7 +139,6 @@ public final class OpacBluemapIntegration {
         } else {
             updateClaims(api);
         }
-        scheduleRefreshIn(OpacBluemapConfig.SERVER.updateInterval.get());
     }
 
     private static ClaimNames getClaimNames(String claimName, String username) {
@@ -261,16 +261,12 @@ public final class OpacBluemapIntegration {
         @SubscribeEvent
         public static void serverStarted(final ServerStartedEvent ev) {
             minecraftServer = ev.getServer();
-            scheduleRefreshIn(OpacBluemapConfig.SERVER.updateInterval.get());
+            startRefreshTask();
         }
 
         @SubscribeEvent
         public static void serverStopping(final ServerStoppingEvent ev) {
-            cancelScheduledRefresh();
-            if (scheduler != null) {
-                scheduler.shutdownNow();
-                scheduler = null;
-            }
+            stopRefreshTask();
             minecraftServer = null;
         }
 
@@ -280,7 +276,7 @@ public final class OpacBluemapIntegration {
                     .requires(s -> s.hasPermission(2))
                     .then(literal("reload")
                             .executes(ctx -> {
-                                scheduleRefreshIn(OpacBluemapConfig.SERVER.updateInterval.get());
+                                startRefreshTask();
                                 ctx.getSource().sendSuccess(
                                         () -> Component.literal("Reloaded OpenPaC BlueMap config").withStyle(ChatFormatting.GREEN),
                                         true
