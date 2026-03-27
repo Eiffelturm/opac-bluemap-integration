@@ -48,7 +48,7 @@ public final class OpacBluemapIntegration {
     private static final int TICKS_PER_SECOND = 20;
     private static final long MILLIS_PER_TICK = 1000L / TICKS_PER_SECOND;
     private static MinecraftServer minecraftServer;
-    private static ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    private static ScheduledExecutorService scheduler;
     private static ScheduledFuture<?> refreshFuture;
 
     public OpacBluemapIntegration(IEventBus modBus, ModContainer container) {
@@ -116,6 +116,8 @@ public final class OpacBluemapIntegration {
 
         final int intervalTicks = OpacBluemapConfig.SERVER.updateInterval.get();
         if (intervalTicks <= 0) return;
+
+        scheduler = Executors.newSingleThreadScheduledExecutor();
 
         final long intervalMs = intervalTicks * MILLIS_PER_TICK;
         refreshFuture = scheduler.scheduleAtFixedRate(
