@@ -11,11 +11,11 @@ import java.util.stream.Collectors;
 public record ShapeHolder(Shape baseShape, Shape... holes) {
     public static ShapeHolder create(Set<ChunkPos> chunks) {
         return new ShapeHolder(
-            createBaseShape(chunks),
-            OpacBluemapIntegration.createChunkGroups(cutoutChunks(chunks))
-                .stream()
-                .map(ShapeHolder::createBaseShape)
-                .toArray(Shape[]::new)
+                createBaseShape(chunks),
+                OpacBluemapIntegration.createChunkGroups(cutoutChunks(chunks))
+                        .stream()
+                        .map(ShapeHolder::createBaseShape)
+                        .toArray(Shape[]::new)
         );
     }
 
@@ -69,17 +69,17 @@ public record ShapeHolder(Shape baseShape, Shape... holes) {
             for (final ChunkPosDirection dir : ChunkPosDirection.values()) {
                 final ChunkPos offsetPos = dir.add(chunk);
                 if (
-                    offsetPos.x < minChunk.x || offsetPos.x > maxChunk.x ||
-                        offsetPos.z < minChunk.z || offsetPos.z > maxChunk.z ||
-                        chunks.contains(offsetPos) || !outsideChunks.add(offsetPos)
+                        offsetPos.x < minChunk.x || offsetPos.x > maxChunk.x ||
+                                offsetPos.z < minChunk.z || offsetPos.z > maxChunk.z ||
+                                chunks.contains(offsetPos) || !outsideChunks.add(offsetPos)
                 ) continue;
                 toVisit.add(offsetPos);
             }
         }
 
         return ChunkPos.rangeClosed(minChunk, maxChunk)
-            .filter(c -> !chunks.contains(c) && !outsideChunks.contains(c))
-            .collect(Collectors.toSet());
+                .filter(c -> !chunks.contains(c) && !outsideChunks.contains(c))
+                .collect(Collectors.toSet());
     }
 
     private static Vector2d vector(BlockPos pos) {
@@ -92,7 +92,7 @@ public record ShapeHolder(Shape baseShape, Shape... holes) {
         }
 
         final List<Vector2d> result = new ArrayList<>();
-        result.add(points.get(0));
+        result.add(points.getFirst());
 
         for (int i = 1; i < points.size() - 1; i++) {
             final Vector2d last = points.get(i - 1);
@@ -103,8 +103,8 @@ public record ShapeHolder(Shape baseShape, Shape... holes) {
             }
         }
 
-        final Vector2d lastPoint = points.get(points.size() - 1);
-        if (!lastPoint.equals(points.get(0))) {
+        final Vector2d lastPoint = points.getLast();
+        if (!lastPoint.equals(points.getFirst())) {
             result.add(lastPoint);
         }
 
