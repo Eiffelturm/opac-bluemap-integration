@@ -45,8 +45,6 @@ public final class OpacBluemapIntegration {
     public static final String MOD_ID = "opac_bluemap_integration";
     public static final Logger LOGGER = LogUtils.getLogger();
     private static final String MARKER_SET_KEY = "opac-bluemap-integration";
-    private static final int TICKS_PER_SECOND = 20;
-    private static final long MILLIS_PER_TICK = 1000L / TICKS_PER_SECOND;
     private static MinecraftServer minecraftServer;
     private static ScheduledExecutorService scheduler;
     private static ScheduledFuture<?> refreshFuture;
@@ -114,17 +112,16 @@ public final class OpacBluemapIntegration {
         stopRefreshTask();
         if (minecraftServer == null) return;
 
-        final int intervalTicks = OpacBluemapConfig.SERVER.updateInterval.get();
-        if (intervalTicks <= 0) return;
+        final int intervalSeconds = OpacBluemapConfig.SERVER.updateInterval.get();
+        if (intervalSeconds <= 0) return;
 
         scheduler = Executors.newSingleThreadScheduledExecutor();
 
-        final long intervalMs = intervalTicks * MILLIS_PER_TICK;
         refreshFuture = scheduler.scheduleAtFixedRate(
                 OpacBluemapIntegration::queueRefreshOnServerThread,
                 0,
-                intervalMs,
-                TimeUnit.MILLISECONDS
+                intervalSeconds,
+                TimeUnit.SECONDS
         );
     }
 

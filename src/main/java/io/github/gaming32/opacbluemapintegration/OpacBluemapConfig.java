@@ -25,8 +25,8 @@ public class OpacBluemapConfig {
             builder.comment("OPAC Bluemap Integration Config");
 
             this.updateInterval = builder
-                    .comment("Claims Update Interval (in ticks)")
-                    .defineInRange("updateInterval", 12000, 0, Integer.MAX_VALUE);
+                    .comment("Claims Update Interval (in seconds)")
+                    .defineInRange("updateInterval", 600, 0, Integer.MAX_VALUE);
             this.markerMinY = builder
                     .comment("Minimum Y Marker")
                     .defineInRange("markerMinY", 75f, -60f, 255f);
