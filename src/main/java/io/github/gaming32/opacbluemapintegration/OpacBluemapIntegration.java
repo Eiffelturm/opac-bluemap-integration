@@ -20,7 +20,6 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.util.Mth;
 import net.minecraft.world.level.ChunkPos;
-import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -30,13 +29,16 @@ import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
-import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import xaero.pac.common.claims.player.api.IPlayerClaimPosListAPI;
 import xaero.pac.common.server.api.OpenPACServerAPI;
 
 import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static net.minecraft.commands.Commands.argument;
@@ -48,8 +50,11 @@ public final class OpacBluemapIntegration {
     public static final Logger LOGGER = LogUtils.getLogger();
     private static final String MARKER_SET_KEY = "opac-bluemap-integration";
     private static final int TICKS_PER_SECOND = 20;
+    private static final long MILLIS_PER_TICK = 1000L / TICKS_PER_SECOND;
     private static MinecraftServer minecraftServer;
-    private static int updateIn;
+    private static ScheduledExecutorService scheduler;
+    private static ScheduledFuture<?> refreshFuture;
+    private static volatile long nextRefreshAtMillis;
 
     public OpacBluemapIntegration(IEventBus modBus, ModContainer container) {
         container.registerConfig(ModConfig.Type.SERVER, OpacBluemapConfig.serverSpec);
@@ -97,7 +102,56 @@ public final class OpacBluemapIntegration {
                     });
                 });
         LOGGER.info("Refreshed OpenPaC BlueMap markers");
-        updateIn = OpacBluemapConfig.SERVER.updateInterval.get();
+    }
+
+    private static void ensureScheduler() {
+        if (scheduler == null || scheduler.isShutdown()) {
+            scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+                final Thread t = new Thread(r, MOD_ID + "-scheduler");
+                t.setDaemon(true);
+                return t;
+            });
+        }
+    }
+
+    private static void cancelScheduledRefresh() {
+        if (refreshFuture != null) {
+            refreshFuture.cancel(false);
+            refreshFuture = null;
+        }
+        nextRefreshAtMillis = 0;
+    }
+
+    private static void scheduleRefreshIn(int ticks) {
+        cancelScheduledRefresh();
+        if (ticks <= 0 || minecraftServer == null) return;
+        ensureScheduler();
+
+        final long delayMs = ticks * MILLIS_PER_TICK;
+        nextRefreshAtMillis = System.currentTimeMillis() + delayMs;
+        refreshFuture = scheduler.schedule(OpacBluemapIntegration::queueRefreshOnServerThread, delayMs, TimeUnit.MILLISECONDS);
+    }
+
+    private static void queueRefreshOnServerThread() {
+        final MinecraftServer server = minecraftServer;
+        if (server == null) return;
+        server.execute(OpacBluemapIntegration::runScheduledRefresh);
+    }
+
+    private static void runScheduledRefresh() {
+        final BlueMapAPI api = BlueMapAPI.getInstance().orElse(null);
+        if (api == null) {
+            LOGGER.warn("Skipping scheduled OpenPaC BlueMap refresh because BlueMap is not loaded");
+        } else {
+            updateClaims(api);
+        }
+        scheduleRefreshIn(OpacBluemapConfig.SERVER.updateInterval.get());
+    }
+
+    private static int getTicksUntilRefresh() {
+        final long remainingMs = nextRefreshAtMillis - System.currentTimeMillis();
+        if (remainingMs <= 0) return 0;
+        return (int)Math.ceil(remainingMs / (double)MILLIS_PER_TICK);
     }
 
     private static ClaimNames getClaimNames(String claimName, String username) {
@@ -220,19 +274,17 @@ public final class OpacBluemapIntegration {
         @SubscribeEvent
         public static void serverStarted(final ServerStartedEvent ev) {
             minecraftServer = ev.getServer();
+            scheduleRefreshIn(OpacBluemapConfig.SERVER.updateInterval.get());
         }
 
         @SubscribeEvent
         public static void serverStopping(final ServerStoppingEvent ev) {
-            minecraftServer = null;
-        }
-
-        @SubscribeEvent(priority = EventPriority.LOWEST)
-        public static void serverTick(final ServerTickEvent.Post ev) {
-            if (updateIn <= 0) return;
-            if (--updateIn <= 0) {
-                BlueMapAPI.getInstance().ifPresent(OpacBluemapIntegration::updateClaims);
+            cancelScheduledRefresh();
+            if (scheduler != null) {
+                scheduler.shutdownNow();
+                scheduler = null;
             }
+            minecraftServer = null;
         }
 
         @SubscribeEvent
@@ -248,16 +300,18 @@ public final class OpacBluemapIntegration {
                                     return 0;
                                 }
                                 updateClaims(api);
+                                scheduleRefreshIn(OpacBluemapConfig.SERVER.updateInterval.get());
                                 sendSuccess(ctx.getSource(), "BlueMap OpenPaC claims refreshed");
                                 return Command.SINGLE_SUCCESS;
                             })
                     )
                     .then(literal("refresh-in")
-                            .executes(ctx -> sendTimedSuccess(ctx.getSource(), "OpenPaC BlueMap will refresh in ", updateIn))
+                            .executes(ctx -> sendTimedSuccess(ctx.getSource(), "OpenPaC BlueMap will refresh in ", getTicksUntilRefresh()))
                             .then(argument("time", TimeArgument.time())
                                     .executes(ctx -> {
-                                        updateIn = IntegerArgumentType.getInteger(ctx, "time");
-                                        return sendTimedSuccess(ctx.getSource(), "OpenPaC BlueMap will refresh in ", updateIn);
+                                        final int ticks = IntegerArgumentType.getInteger(ctx, "time");
+                                        scheduleRefreshIn(ticks);
+                                        return sendTimedSuccess(ctx.getSource(), "OpenPaC BlueMap will refresh in ", ticks);
                                     })
                             )
                     )
@@ -271,19 +325,15 @@ public final class OpacBluemapIntegration {
                                     .executes(ctx -> {
                                         final int interval = IntegerArgumentType.getInteger(ctx, "interval");
                                         OpacBluemapConfig.SERVER.updateInterval.set(interval);
-                                        if (interval < updateIn) {
-                                            updateIn = interval;
-                                        }
                                         OpacBluemapConfig.SERVER.updateInterval.save();
+                                        scheduleRefreshIn(interval);
                                         return sendTimedSuccess(ctx.getSource(), "OpenPaC BlueMap will auto refresh every ", interval);
                                     })
                             )
                     )
                     .then(literal("reload")
                             .executes(ctx -> {
-                                if (OpacBluemapConfig.SERVER.updateInterval.get() < updateIn) {
-                                    updateIn = OpacBluemapConfig.SERVER.updateInterval.get();
-                                }
+                                scheduleRefreshIn(OpacBluemapConfig.SERVER.updateInterval.get());
                                 sendSuccess(ctx.getSource(), "Reloaded OpenPaC BlueMap config");
                                 return Command.SINGLE_SUCCESS;
                             })
